@@ -5,6 +5,7 @@ const portfolioCount = 0;
 
 export default {
   template: {
+    profileType: "master", // "master" | "studio"
     serviceMode: "simple", // "simple" | "categories"
     portfolioPreviewCount: 5,
   },
@@ -20,7 +21,8 @@ export default {
     dative: "",
     genitive: "",
     monogram: "T",
-    profession: "мастер маникюра и педикюра",
+    // Write the specialization without forcing the word «мастер» or «студия».
+    profession: "маникюра и педикюра",
     heroTitle: "",
     heroCopy: "",
     experienceYears: "",
@@ -61,6 +63,7 @@ export default {
     yandexMapHrefMatch: "",
   },
 
+  // Leave unknown reputation values empty. The final TANEM layer removes empty stats cleanly.
   reputation: {
     rating: "",
     reviewCount: "",
@@ -73,11 +76,11 @@ export default {
     beforeAfter: [],
     gallery: Array.from({ length: portfolioCount }, (_, index) => ({
       src: `/assets/client/portfolio/${String(index + 1).padStart(2, "0")}.jpg`,
-      alt: `Работа мастера — фото ${index + 1}`,
+      alt: `Работа — фото ${index + 1}`,
     })),
   },
 
-  // SIMPLE mode: use these two arrays. This preserves the compact Nonna-style selector.
+  // SIMPLE mode: use these two arrays. This preserves the compact two-direction selector.
   services: {
     manicure: [
       // service("Название услуги", "0 ₽", "1 ч"),
@@ -88,7 +91,6 @@ export default {
   },
 
   // CATEGORIES mode: rename/add/remove top-level categories and fill their items.
-  // These are structural placeholders, not client data.
   serviceCategories: [
     { key: "manicure", label: "Маникюр", items: [] },
     { key: "pedicure", label: "Педикюр", items: [] },
