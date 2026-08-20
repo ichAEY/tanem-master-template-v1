@@ -1,0 +1,209 @@
+name: Deploy TANEM client site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.readiness.outputs.ready }}
+    steps:
+      - name: Checkout client repository
+        uses: actions/checkout@v4
+        with:
+          path: customer
+
+      - name: Check whether client content is ready
+        id: readiness
+        shell: bash
+        run: |
+          set -e
+          READY=true
+
+          if [ ! -f customer/assets/images/master.jpg ]; then
+            echo "TANEM template mode: assets/images/master.jpg is not present yet."
+            READY=false
+          fi
+
+          COUNT=$(find customer/assets/images/portfolio -maxdepth 1 -type f -iname '*.jpg' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$COUNT" -lt 5 ]; then
+            echo "TANEM template mode: at least 5 portfolio JPG files are required; found $COUNT."
+            READY=false
+          fi
+
+          if ! node --input-type=module -e "import('./customer/site-data.mjs').then(({default:s}) => process.exit(s?.master?.name && s?.links?.bookingUrl ? 0 : 1))"; then
+            echo "TANEM template mode: master.name and links.bookingUrl must be filled."
+            READY=false
+          fi
+
+          echo "ready=$READY" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout pinned TANEM visual base
+        if: steps.readiness.outputs.ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ichAEY/claytone-current
+          ref: ce1bd42b44e76e1851af9e069c4cbcf06fc8eac2
+          path: template
+
+      - name: Apply client data and assets
+        if: steps.readiness.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -e
+          cp customer/site-data.mjs template/site-data.mjs
+          mkdir -p template/public/assets/client/portfolio
+          cp customer/assets/images/master.jpg template/public/assets/client/master.jpg
+          cp customer/assets/images/portfolio/*.jpg template/public/assets/client/portfolio/
+
+          if [ -f customer/assets/images/logo.jpg ]; then
+            cp customer/assets/images/logo.jpg template/public/assets/client/logo.jpg
+          fi
+
+          if [ -f customer/CNAME ]; then
+            cp customer/CNAME template/public/CNAME
+            echo "SITE_BASE_PATH=" >> "$GITHUB_ENV"
+          else
+            REPO_NAME="${GITHUB_REPOSITORY#*/}"
+            echo "SITE_BASE_PATH=/$REPO_NAME" >> "$GITHUB_ENV"
+          fi
+
+          printf '%s\n' '// Booking uses the external client booking URL.' > template/public/noop.js
+
+      - name: Setup Node
+        if: steps.readiness.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: template/package-lock.json
+
+      - name: Install dependencies
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        run: npm ci
+
+      - name: Generate site from client data
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        run: node scripts/generate-site.mjs
+
+      - name: Apply fixed TANEM v1 structure
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        run: node ../customer/scripts/apply-tanem-template.mjs
+
+      - name: Configure static export
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        run: |
+          cat > next.config.ts <<'EOF'
+          import type { NextConfig } from "next";
+
+          const basePath = process.env.SITE_BASE_PATH || "";
+
+          const nextConfig: NextConfig = {
+            output: "export",
+            trailingSlash: true,
+            images: { unoptimized: true },
+            basePath,
+          };
+
+          export default nextConfig;
+          EOF
+
+      - name: Prefix root asset URLs for project Pages
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        shell: bash
+        run: |
+          if [ -z "$SITE_BASE_PATH" ]; then
+            echo "Custom-domain mode: no asset prefix required."
+            exit 0
+          fi
+
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const prefix = process.env.SITE_BASE_PATH || '';
+          const roots = ['app', 'public'];
+          const allowed = new Set(['.tsx', '.ts', '.js', '.mjs', '.css', '.html']);
+          const replacements = [
+            ['/assets/', `${prefix}/assets/`],
+            ['/claytone-enhancements.js', `${prefix}/claytone-enhancements.js`],
+            ['/android-scroll-fix.js', `${prefix}/android-scroll-fix.js`],
+            ['/favicon.svg', `${prefix}/favicon.svg`],
+            ['/noop.js', `${prefix}/noop.js`],
+          ];
+
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full);
+              else if (allowed.has(path.extname(entry.name))) {
+                let text = fs.readFileSync(full, 'utf8');
+                const before = text;
+                for (const [from, to] of replacements) text = text.split(from).join(to);
+                if (text !== before) fs.writeFileSync(full, text);
+              }
+            }
+          }
+
+          for (const root of roots) if (fs.existsSync(root)) walk(root);
+          NODE
+
+      - name: Prepare clean Pages build
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        run: |
+          rm -rf public/_next
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = 'tsconfig.json';
+          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+          config.exclude = [
+            ...(config.exclude || []),
+            'db/**', 'worker/**', 'examples/**', 'build/**', 'drizzle/**',
+            'drizzle.config.ts', 'vite.config.ts'
+          ];
+          fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
+          NODE
+
+      - name: Build client site
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        run: npx next build
+
+      - name: Setup Pages
+        if: steps.readiness.outputs.ready == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: steps.readiness.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: template/out
+
+  deploy:
+    if: needs.build.outputs.ready == 'true'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
