@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ready: ${{ steps.readiness.outputs.ready }}
+
     steps:
       - name: Checkout client repository
         uses: actions/checkout@v4
@@ -32,14 +33,15 @@ jobs:
           set -e
           READY=true
 
-          if [ ! -f customer/assets/images/master.jpg ]; then
-            echo "TANEM template mode: assets/images/master.jpg is not present yet."
+          MASTER_COUNT=$(find customer/assets/images -maxdepth 1 -type f \( -iname 'master.jpg' -o -iname 'master.jpeg' -o -iname 'master.png' -o -iname 'master.webp' \) 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$MASTER_COUNT" -lt 1 ]; then
+            echo "TANEM template mode: master.jpg / master.png / master.webp is not present yet."
             READY=false
           fi
 
-          COUNT=$(find customer/assets/images/portfolio -maxdepth 1 -type f -iname '*.jpg' 2>/dev/null | wc -l | tr -d ' ')
+          COUNT=$(find customer/assets/images/portfolio -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) 2>/dev/null | wc -l | tr -d ' ')
           if [ "$COUNT" -lt 5 ]; then
-            echo "TANEM template mode: at least 5 portfolio JPG files are required; found $COUNT."
+            echo "TANEM template mode: at least 5 portfolio images are required; found $COUNT."
             READY=false
           fi
 
@@ -65,12 +67,9 @@ jobs:
           set -e
           cp customer/site-data.mjs template/site-data.mjs
           mkdir -p template/public/assets/client/portfolio
-          cp customer/assets/images/master.jpg template/public/assets/client/master.jpg
-          cp customer/assets/images/portfolio/*.jpg template/public/assets/client/portfolio/
 
-          if [ -f customer/assets/images/logo.jpg ]; then
-            cp customer/assets/images/logo.jpg template/public/assets/client/logo.jpg
-          fi
+          find customer/assets/images -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -exec cp {} template/public/assets/client/ \;
+          find customer/assets/images/portfolio -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -exec cp {} template/public/assets/client/portfolio/ \;
 
           if [ -f customer/CNAME ]; then
             cp customer/CNAME template/public/CNAME
@@ -100,10 +99,15 @@ jobs:
         working-directory: template
         run: node scripts/generate-site.mjs
 
-      - name: Apply fixed TANEM v1 structure
+      - name: Apply fixed TANEM structure
         if: steps.readiness.outputs.ready == 'true'
         working-directory: template
         run: node ../customer/scripts/apply-tanem-template.mjs
+
+      - name: Apply final TANEM refinements
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        run: node ../customer/scripts/apply-tanem-final.mjs
 
       - name: Configure static export
         if: steps.readiness.outputs.ready == 'true'
@@ -113,14 +117,12 @@ jobs:
           import type { NextConfig } from "next";
 
           const basePath = process.env.SITE_BASE_PATH || "";
-
           const nextConfig: NextConfig = {
             output: "export",
             trailingSlash: true,
             images: { unoptimized: true },
             basePath,
           };
-
           export default nextConfig;
           EOF
 
