@@ -77,7 +77,7 @@ export default {
     })),
   },
 
-  // SIMPLE mode uses these two arrays and keeps the compact Nonna-style selector.
+  // SIMPLE mode: use these two arrays. This preserves the compact Nonna-style selector.
   services: {
     manicure: [
       // service("Название услуги", "0 ₽", "1 ч"),
@@ -87,12 +87,13 @@ export default {
     ],
   },
 
-  // CATEGORIES mode uses this list instead. Add/remove categories freely.
+  // CATEGORIES mode: rename/add/remove top-level categories and fill their items.
+  // These are structural placeholders, not client data.
   serviceCategories: [
-    // { key: "manicure", label: "Маникюр", items: [service("Услуга", "0 ₽", "1 ч")] },
-    // { key: "pedicure", label: "Педикюр", items: [] },
-    // { key: "podology", label: "Подология", items: [] },
-    // { key: "training", label: "Обучение", items: [] },
+    { key: "manicure", label: "Маникюр", items: [] },
+    { key: "pedicure", label: "Педикюр", items: [] },
+    { key: "podology", label: "Подология", items: [] },
+    { key: "training", label: "Обучение", items: [] },
   ],
 
   reviews: [],
