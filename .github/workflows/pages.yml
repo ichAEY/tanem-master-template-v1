@@ -109,6 +109,11 @@ jobs:
         working-directory: template
         run: node ../customer/scripts/apply-tanem-final.mjs
 
+      - name: Apply adaptive TANEM polish
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: template
+        run: node ../customer/scripts/apply-tanem-polish.mjs
+
       - name: Configure static export
         if: steps.readiness.outputs.ready == 'true'
         working-directory: template
