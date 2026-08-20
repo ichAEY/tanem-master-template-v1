@@ -16,7 +16,7 @@ const heroTitle = String(site.master?.heroTitle || site.master?.name || "").trim
 
 // Long client names/titles must never collide visually.
 source = source.replace(
-  /<h1>([\s\S]*?)<\/h1>/,
+  /<h1(?: className="[^"]*")?>([\s\S]*?)<\/h1>/,
   `<h1 className="tanem-hero-title${heroTitle.length > 32 ? " tanem-hero-title-long" : ""}">$1</h1>`,
 );
 
@@ -47,6 +47,40 @@ if (promotions.length === 1) {
   );
 }
 
+// Desktop gallery: hovering must not stop autoplay. Manual drag begins only after a deliberate press + movement.
+source = source.replace('              onMouseEnter={() => pauseDesktopGallery()}\n', '');
+source = source.replace(
+  '              onMouseLeave={() => { if (desktopGalleryPointerStartRef.current === null) resumeDesktopGallery(); }}',
+  '              onMouseLeave={() => { if (desktopGalleryPointerStartRef.current !== null) resumeDesktopGallery(); }}',
+);
+source = source.replace(
+  '              onMouseLeave={resumeDesktopGallery}',
+  '              onMouseLeave={() => { if (desktopGalleryPointerStartRef.current !== null) resumeDesktopGallery(); }}',
+);
+source = source.replace(
+`  const moveDesktopGallery = (clientX: number) => {
+    const start = desktopGalleryPointerStartRef.current;
+    if (start === null) return;
+    const distance = clientX - start;
+    if (Math.abs(distance) > 7) desktopGalleryWasDraggedRef.current = true;
+    setDesktopGalleryOffset(desktopGalleryStartOffsetRef.current + distance);
+  };`,
+`  const moveDesktopGallery = (clientX: number) => {
+    const start = desktopGalleryPointerStartRef.current;
+    if (start === null) return;
+    const distance = clientX - start;
+    const threshold = 12;
+    if (!desktopGalleryWasDraggedRef.current && Math.abs(distance) < threshold) return;
+    desktopGalleryWasDraggedRef.current = true;
+    const adjustedDistance = distance > 0 ? distance - threshold : distance + threshold;
+    setDesktopGalleryOffset(desktopGalleryStartOffsetRef.current + adjustedDistance);
+  };`,
+);
+source = source.replace(
+  '              ref={desktopGalleryViewportRef}\n',
+  '              ref={desktopGalleryViewportRef}\n              onDragStart={(event) => event.preventDefault()}\n',
+);
+
 css += `
 
 /* TANEM adaptive polish: safe titles, real contacts, one-promotion mode. */
@@ -63,6 +97,25 @@ css += `
   display: none !important;
 }
 
+/* Keep the client name together in the portfolio caption. */
+#mobile-portfolio .mct-section-note {
+  white-space: nowrap !important;
+  max-width: none !important;
+}
+
+/* Desktop filmstrip: images never become browser drag ghosts. */
+.dct-gallery-viewport,
+.dct-gallery-track,
+.dct-film-frame,
+.dct-film-frame img {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.dct-film-frame img {
+  -webkit-user-drag: none !important;
+  pointer-events: none !important;
+}
+
 @media (max-width: 767px) {
   .tanem-hero-title {
     line-height: .96 !important;
@@ -71,6 +124,54 @@ css += `
   .tanem-hero-title-long {
     font-size: clamp(32px, 9.5vw, 40px) !important;
     line-height: .98 !important;
+  }
+
+  /* Service cards need breathing room; secondary details stay visually quiet. */
+  .mct-service-row {
+    padding-block: 17px !important;
+    column-gap: 15px !important;
+    min-height: 78px !important;
+    align-items: center !important;
+  }
+  .mct-service-name {
+    min-width: 0 !important;
+  }
+  .mct-service-name strong {
+    display: block !important;
+    font-size: 14px !important;
+    line-height: 1.28 !important;
+    letter-spacing: -.012em !important;
+  }
+  .mct-service-name .dct-service-description {
+    display: block !important;
+    margin: 5px 0 0 !important;
+    max-width: 29ch !important;
+    color: rgba(66, 54, 49, .58) !important;
+    font: 500 11.5px/1.36 "Manrope", Arial, sans-serif !important;
+    letter-spacing: 0 !important;
+  }
+  .mct-service-name small {
+    display: block !important;
+    margin-top: 6px !important;
+    line-height: 1.25 !important;
+  }
+  .mct-service-action {
+    min-width: 88px !important;
+    align-self: center !important;
+  }
+
+  /* Give service category pills a little more separation without changing the Tahmina ribbon idea. */
+  .mct-tabs-track {
+    gap: 8px !important;
+    padding: 5px !important;
+  }
+  .mct-tabs-scroll .mct-tab {
+    padding-inline: 18px !important;
+  }
+
+  #mobile-portfolio .mct-section-note {
+    font-size: 10.5px !important;
+    letter-spacing: -.015em !important;
   }
 
   .mct-final-contact-grid {
@@ -109,11 +210,12 @@ css += `
     line-height: .97 !important;
   }
 
+  /* Desktop contact actions belong to the left side of the composition. */
   .mct-final-contact-grid {
     grid-template-columns: repeat(${Math.max(1, Math.min(contactCount, 4))}, minmax(240px, 340px)) !important;
-    justify-content: center !important;
+    justify-content: start !important;
     width: min(100%, ${contactCount <= 2 ? "760px" : "1280px"}) !important;
-    margin-inline: auto !important;
+    margin-inline: 0 !important;
   }
 
   .mct-promotion-list.is-single {
