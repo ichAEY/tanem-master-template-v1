@@ -1,0 +1,56 @@
+name: Validate TANEM template
+
+on:
+  push:
+    branches: [main, "build/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout TANEM template repository
+        uses: actions/checkout@v4
+        with:
+          path: customer
+
+      - name: Checkout pinned visual base
+        uses: actions/checkout@v4
+        with:
+          repository: ichAEY/claytone-current
+          ref: ce1bd42b44e76e1851af9e069c4cbcf06fc8eac2
+          path: base
+
+      - name: Validate simple service mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp customer/site-data.mjs base/site-data.mjs
+          cd base
+          node scripts/generate-site.mjs
+          node ../customer/scripts/apply-tanem-template.mjs
+          grep -q 'galleryWorks.slice(0, 5)' app/mobile-claytone.tsx
+          ! grep -q '<h3>До / после</h3>' app/mobile-claytone.tsx
+          grep -q 'mct-gallery-button:active' app/globals.css
+          grep -q 'const \[category, setCategory\] = useState<"manicure" | "pedicure">' app/mobile-claytone.tsx
+
+      - name: Reset pinned visual base
+        working-directory: base
+        run: git reset --hard HEAD
+
+      - name: Validate categories service mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed 's/serviceMode: "simple"/serviceMode: "categories"/' customer/site-data.mjs > base/site-data.mjs
+          cd base
+          node scripts/generate-site.mjs
+          node ../customer/scripts/apply-tanem-template.mjs
+          grep -q 'mct-tabs-ribbon-wrap' app/mobile-claytone.tsx
+          grep -q '>Подология</button>' app/mobile-claytone.tsx
+          grep -q '>Обучение</button>' app/mobile-claytone.tsx
+          grep -q 'tanemAllServices' app/mobile-claytone.tsx
+          ! grep -q '<h3>До / после</h3>' app/mobile-claytone.tsx
