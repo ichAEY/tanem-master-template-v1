@@ -92,3 +92,7 @@ css += `
 fs.writeFileSync(componentPath, source, "utf8");
 fs.writeFileSync(cssPath, css, "utf8");
 console.log("TANEM final tuning applied: mobile service titles, nowrap desktop tabs, deliberate gallery drag.");
+
+// Stability is part of the TANEM factory from now on: font paint, expandable descriptions
+// and client-specific final alignment must be applied to every newly generated site.
+await import("./apply-tanem-stability.mjs");
